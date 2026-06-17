@@ -78,7 +78,7 @@ with col_bot3:
 
 # --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 ---
 with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
-    st.markdown("請設定欲輸入的數據組數，並輸入各組的總長度 $L$、水外長 $L_{out}$ 與標準液比重，系統將自動計算 $d_{exp}$ 並擬合：")
+    st.markdown("請設定欲輸入的數據組數，並輸入各組的總長度 $L$、水外長 $L_{out}$，系統將自動計算並擬合：")
     
     num_pts = st.number_input("欲輸入的實驗數據組數 (N):", min_value=2, max_value=10, value=3, step=1)
     
@@ -87,15 +87,16 @@ with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
     
     for i in range(int(num_pts)):
         st.markdown(f"**第 {i+1} 組數據**")
-        col_f1, col_f2, col_f3 = st.columns(3)
+        # 【修改處】改為 2 欄，移除手動輸入的第三欄，僅需輸入 L 與 L_out
+        col_f1, col_f2 = st.columns(2)
         with col_f1:
             l_i = st.number_input(f"總長度 L_{i+1}", value=40.0, step=1.0, key=f"L_{i}")
         with col_f2:
-            # 【細微修正】讓預設的 L_out 自動錯開 (20, 15, 10...)，避免使用者未輸入就按計算造成矩陣秩不足
             default_lout = max(0.0, 20.0 - i * 5.0)
             lout_i = st.number_input(f"水外長 L_out_{i+1}", value=default_lout, step=1.0, key=f"Lout_{i}")
-        with col_f3:
-            d_std_i = st.number_input(f"該標準液體真實比重 d_std_{i+1}", value=1.000, step=0.001, format="%.3f", key=f"dstd_{i}")
+        
+        # 背景固定以標準液體(如純水)的比重 1.000 作為基準計算誤差
+        d_std_i = 1.000
         
         x_i = lout_i / l_i if l_i > 0 else 0
         P_fit = [2, 2, 3, 4][shape_idx]
@@ -107,7 +108,6 @@ with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
     
     if st.button("執行多項式擬合計算"):
         try:
-            # 【細微修正】確保 X 矩陣內有有效數值，防呆處理
             if all(x == 0 for x, _ in X_fit):
                 st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0 且具有差異性。")
             else:
