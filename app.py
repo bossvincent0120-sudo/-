@@ -76,7 +76,7 @@ with col_bot3:
     d_exp_input = 1 - (x_ratio_temp**P_temp)
     st.metric("儀器實測值 d_exp (自動計算):", f"{d_exp_input:.4f}")
 
-# --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 (新增功能) ---
+# --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 ---
 with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
     st.markdown("請設定欲輸入的數據組數，並輸入各組的總長度 $L$、水外長 $L_{out}$ 與標準液比重，系統將自動計算 $d_{exp}$ 並擬合：")
     
@@ -91,9 +91,10 @@ with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
         with col_f1:
             l_i = st.number_input(f"總長度 L_{i+1}", value=40.0, step=1.0, key=f"L_{i}")
         with col_f2:
-            lout_i = st.number_input(f"水外長 L_out_{i+1}", value=20.0, step=1.0, key=f"Lout_{i}")
+            # 【細微修正】讓預設的 L_out 自動錯開 (20, 15, 10...)，避免使用者未輸入就按計算造成矩陣秩不足
+            default_lout = max(0.0, 20.0 - i * 5.0)
+            lout_i = st.number_input(f"水外長 L_out_{i+1}", value=default_lout, step=1.0, key=f"Lout_{i}")
         with col_f3:
-            # 需輸入標準液的真實比重才能計算殘差誤差
             d_std_i = st.number_input(f"該標準液體真實比重 d_std_{i+1}", value=1.000, step=0.001, format="%.3f", key=f"dstd_{i}")
         
         x_i = lout_i / l_i if l_i > 0 else 0
@@ -106,8 +107,12 @@ with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
     
     if st.button("執行多項式擬合計算"):
         try:
-            c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
-            st.success(f"✅ 擬合成功！建議請將上方滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
+            # 【細微修正】確保 X 矩陣內有有效數值，防呆處理
+            if all(x == 0 for x, _ in X_fit):
+                st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0 且具有差異性。")
+            else:
+                c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
+                st.success(f"✅ 擬合成功！建議請將上方滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
         except Exception as e:
             st.error("計算失敗，請檢查輸入的數據。")
 
@@ -132,7 +137,6 @@ else:
     z_cb_val = L_total * ((P-1)/P) * ((1 - x_ratio**P) / (1 - x_ratio**(P-1)))
 
 # --- 5. 藍色數據儀表板 (保留您的 HTML 設計，透過 st.markdown 渲染) ---
-# 【修改處】將 CSS Grid 欄位擴增，加入紫色的實測值 (d_exp) 顯示
 st.markdown(f"""
 <div style="background-color: #f1f8ff; padding: 15px; border-radius: 8px; border-left: 10px solid #007bff; margin-bottom: 20px; font-family: sans-serif;">
     <h3 style="margin: 0 0 12px 0; color: #0056b3; font-size: 18px;">{t['report_title']}</h3>
@@ -207,4 +211,4 @@ ax2.set_title(t['ax2_title'], fontproperties=tc_font_bold, fontsize=16)
 ax2.legend(); ax2.grid(True, alpha=0.2)
 
 plt.tight_layout()
-st.pyplot(fig) # 唯一修改：將 plt.show() 改為 st.pyplot(fig)
+st.pyplot(fig)
