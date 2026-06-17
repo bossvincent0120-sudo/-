@@ -10,7 +10,7 @@ import os
 # --- 0. 網頁配置設定 ---
 st.set_page_config(layout="wide", page_title="懸吊式比重計數位雙生")
 
-# --- 1. 字體與環境初始化 ---
+# --- 1. 字體與環境初始化 (完全保留您的設定) ---
 @st.cache_resource
 def load_fonts():
     font_path = "NotoSansCJKtc-Regular.otf"
@@ -27,7 +27,7 @@ def load_fonts():
 tc_font, tc_font_bold = load_fonts()
 plt.rcParams['axes.unicode_minus'] = False 
 
-# --- 2. 雙語字典庫 ---
+# --- 2. 雙語字典庫 (完全保留) ---
 UI_TEXT = {
     '中文': {
         'shapes': [("圓柱體 (Cylinder, P=2)", 0), ("長方薄板 (Rect Plate, P=2)", 1), 
@@ -76,17 +76,18 @@ with col_bot3:
 
 # --- 3.5 虛擬實驗室：標定數據模擬與擬合計算工具 ---
 with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
-    st.markdown("本區模擬現實中探頭進入**純水 (d=1.000)** 時的狀況。系統會根據您選擇的幾何形狀，自動加入模擬的「表面張力」與「力矩偏移」噪音，產生虛擬儀器讀值。")
+    st.markdown("本區模擬現實中探頭進入**純水 (d=1.000)** 時的狀況。系統內建「動態材質擾動引擎」，會根據您的輸入自動模擬不同材質（如壓克力、金屬）所造成的表面張力與重心變異。")
     
     num_pts = st.number_input("欲模擬的採樣點數量 (N):", min_value=2, max_value=10, value=3, step=1)
     
-    # 【核心修改】為每種形狀設定不同的「隱藏真實物理誤差」
-    # 圓錐的截面積變化大，因此預設誤差最大；圓柱最穩定，誤差最小。
-    hidden_c1_list = [0.035, 0.045, 0.082, 0.125]
-    hidden_c2_list = [0.012, 0.018, 0.045, 0.075]
+    # 【核心修改】材質動態擾動引擎
+    # 將上方主介面的 L_total 與 L_out 作為「材質切換」的種子
+    # 只要稍微調整主介面的長度，系統就會模擬您換了一支「親水性或疏水性不同」的探頭
+    np.random.seed(int(L_total * 100 + L_out * 10 + shape_idx))
+    material_multiplier = np.random.uniform(0.3, 2.0) 
     
-    true_c1 = hidden_c1_list[shape_idx]
-    true_c2 = hidden_c2_list[shape_idx]
+    base_c1 = [0.035, 0.045, 0.082, 0.125][shape_idx] * material_multiplier
+    base_c2 = [0.012, 0.018, 0.045, 0.075][shape_idx] * material_multiplier
     
     X_fit = []
     Y_fit = []
@@ -100,15 +101,14 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
             default_lout = max(0.0, 20.0 - i * 5.0)
             lout_i = st.number_input(f"水外長 L_out_{i+1}", value=default_lout, step=1.0, key=f"Lout_{i}")
         
-        # 系統底層運算：模擬真實世界的儀器讀值 (理想值 - 隱藏的物理干擾)
         x_i = lout_i / l_i if l_i > 0 else 0
         P_fit = [2, 2, 3, 4][shape_idx]
         d_ideal_sim = 1 - (x_i**P_fit)
         
-        # 產生帶有特定幾何干擾的虛擬讀值
-        d_exp_sim = d_ideal_sim - (true_c1 * x_i) - (true_c2 * (x_i**2))
+        # 加入極微小的環境雜訊，模擬真實水波擾動
+        noise = np.random.uniform(-0.003, 0.003)
+        d_exp_sim = d_ideal_sim - (base_c1 * x_i) - (base_c2 * (x_i**2)) + noise
         
-        # 標定基準為純水
         d_std_fixed = 1.000
         
         st.caption(f"💡 露出比例 x = {x_i:.3f} | 虛擬感測器讀值 d_exp = {d_exp_sim:.4f}")
@@ -122,11 +122,11 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
                 st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0。")
             else:
                 c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
-                st.success(f"✅ 擬合成功！演算法成功捕捉該幾何之物理特徵。\n請將主介面滑桿設定為： **線性誤差 C1 = {-c[0]:.4f}** , **二次誤差 C2 = {-c[1]:.4f}**")
+                st.success(f"✅ 擬合成功！演算法成功捕捉該材質與幾何之特徵。\n請將主介面滑桿設定為： **線性誤差 C1 = {-c[0]:.4f}** , **二次誤差 C2 = {-c[1]:.4f}**")
         except Exception as e:
             st.error("計算失敗。")
 
-# --- 4. 物理運算 ---
+# --- 4. 物理運算 (一字未動) ---
 P_VALUES = [2, 2, 3, 4]
 P = P_VALUES[shape_idx]
 x_ratio = L_out / L_total if L_total > 0 else 0
@@ -146,7 +146,7 @@ if x_ratio >= 0.999:
 else:
     z_cb_val = L_total * ((P-1)/P) * ((1 - x_ratio**P) / (1 - x_ratio**(P-1)))
 
-# --- 5. 藍色數據儀表板 ---
+# --- 5. 藍色數據儀表板 (一字未動) ---
 st.markdown(f"""
 <div style="background-color: #f1f8ff; padding: 15px; border-radius: 8px; border-left: 10px solid #007bff; margin-bottom: 20px; font-family: sans-serif;">
     <h3 style="margin: 0 0 12px 0; color: #0056b3; font-size: 18px;">{t['report_title']}</h3>
@@ -164,7 +164,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 6. 繪圖區 ---
+# --- 6. 繪圖區 (一字未動) ---
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7.5), gridspec_kw={'width_ratios': [1, 1.1]})
 pe = [path_effects.withStroke(linewidth=3, foreground="white")]
 
