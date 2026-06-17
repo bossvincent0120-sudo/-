@@ -64,11 +64,41 @@ with col_top2:
 with col_top3:
     L_out = st.number_input(t['labels'][2], value=20.0, step=1.0)
 
-col_bot1, col_bot2 = st.columns(2)
+# 【修改處】將此列擴充為 3 欄，加入 d_exp 輸入框
+col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
     C1 = st.slider(t['labels'][3], min_value=0.0, max_value=0.4, value=0.10, step=0.01)
 with col_bot2:
     C2 = st.slider(t['labels'][4], min_value=0.0, max_value=0.4, value=0.00, step=0.01)
+with col_bot3:
+    d_exp_input = st.number_input("儀器實測值 d_exp:", value=0.000, step=0.001, format="%.3f")
+
+# --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 (新增功能) ---
+with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
+    st.markdown("輸入 3 組實驗標定數據 (露出比例 $x$ 與對應的儀器實測值 $d_{exp}$)，系統將透過最小平方法自動擬合出最佳誤差係數：")
+    col_f1, col_f2, col_f3 = st.columns(3)
+    with col_f1:
+        x1 = st.number_input("露出比例 x1", value=0.2, step=0.1)
+        d1 = st.number_input("實測值 d_exp 1", value=0.938, step=0.001, format="%.3f")
+    with col_f2:
+        x2 = st.number_input("露出比例 x2", value=0.5, step=0.1)
+        d2 = st.number_input("實測值 d_exp 2", value=0.695, step=0.001, format="%.3f")
+    with col_f3:
+        x3 = st.number_input("露出比例 x3", value=0.8, step=0.1)
+        d3 = st.number_input("實測值 d_exp 3", value=0.276, step=0.001, format="%.3f")
+    
+    if st.button("執行多項式擬合計算"):
+        P_fit = [2, 2, 3, 4][shape_idx]
+        y1 = (1 - x1**P_fit) - d1
+        y2 = (1 - x2**P_fit) - d2
+        y3 = (1 - x3**P_fit) - d3
+        X = np.array([[x1, x1**2], [x2, x2**2], [x3, x3**2]])
+        Y = np.array([y1, y2, y3])
+        try:
+            c, _, _, _ = np.linalg.lstsq(X, Y, rcond=None)
+            st.success(f"✅ 擬合成功！建議請將上方滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
+        except Exception as e:
+            st.error("計算失敗，請檢查輸入的數據。")
 
 # --- 4. 物理運算 (完全保留您的原始邏輯) ---
 P_VALUES = [2, 2, 3, 4]
@@ -91,15 +121,17 @@ else:
     z_cb_val = L_total * ((P-1)/P) * ((1 - x_ratio**P) / (1 - x_ratio**(P-1)))
 
 # --- 5. 藍色數據儀表板 (保留您的 HTML 設計，透過 st.markdown 渲染) ---
+# 【修改處】將 CSS Grid 欄位擴增，加入紫色的實測值 (d_exp) 顯示
 st.markdown(f"""
 <div style="background-color: #f1f8ff; padding: 15px; border-radius: 8px; border-left: 10px solid #007bff; margin-bottom: 20px; font-family: sans-serif;">
     <h3 style="margin: 0 0 12px 0; color: #0056b3; font-size: 18px;">{t['report_title']}</h3>
-    <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr; gap: 15px; align-items: center; font-size: 14px;">
+    <div style="display: grid; grid-template-columns: 1.5fr 1fr 1fr 1fr 1fr 1fr; gap: 10px; align-items: center; font-size: 14px;">
         <span><b>待測物:</b> {t['shapes'][shape_idx][0]}</span>
         <span style="color: #0056b3;">🔵 <b>{t['vec_T']}</b> = {T_mag:.4f}</span>
         <span style="color: #d9534f;">🔴 <b>{t['vec_Fb']}</b> = {FB_mag:.4f}</span>
         <span style="color: #f0ad4e;">🟡 <b>{t['vec_W']}</b> = {W_fixed:.4f}</span>
         <span style="color: #28a745;">🟢 <b>{t['vec_d']}</b> = {d_true:.4f}</span>
+        <span style="color: #6f42c1;">🟣 <b>實測值(d_exp)</b> = {d_exp_input:.4f}</span>
     </div>
     <div style="margin-top: 10px; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 5px;">
         微積分幾何中心檢驗：質心 (CG) = {z_cg_val:.2f} | 浮心 (CB) = {z_cb_val:.2f}
@@ -164,4 +196,4 @@ ax2.set_title(t['ax2_title'], fontproperties=tc_font_bold, fontsize=16)
 ax2.legend(); ax2.grid(True, alpha=0.2)
 
 plt.tight_layout()
-st.pyplot(fig) # 唯一修改：將 plt.show() 改為 st.pyplot(fig)
+st.pyplot(fig)
