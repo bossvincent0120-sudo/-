@@ -32,7 +32,7 @@ UI_TEXT = {
     '中文': {
         'shapes': [("圓柱體 (Cylinder, P=2)", 0), ("長方薄板 (Rect Plate, P=2)", 1), 
                    ("三角薄板 (Tri Plate, P=3)", 2), ("圓錐體 (Cone, P=4)", 3)],
-        'labels': ['幾幾何形狀:', '總長度 L:', '水外長 L_out:', '線性誤差 C1:', '二次誤差 C2:'],
+        'labels': ['幾何形狀:', '總長度 L:', '水外長 L_out:', '線性誤差 C1:', '二次誤差 C2:'],
         'report_title': "廣義幾何懸吊式比重計系統 (數位雙生版)",
         'vec_d': "真實比重 (d)", 'vec_W': "重力 (W)", 'vec_Fb': "浮力 (Fb)", 'vec_T': "張力 (T)",
         'ax1_title': "【實體層】幾何受力平衡與重心(CG)/浮心(CB)分析",
@@ -64,57 +64,57 @@ with col_top2:
 with col_top3:
     L_out = st.number_input(t['labels'][2], value=20.0, step=1.0)
 
-col_bot1, col_bot2 = st.columns(2)
+# 【修改處】將此列擴充為 3 欄，d_exp 改為自動計算與顯示
+col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
     C1 = st.slider(t['labels'][3], min_value=0.0, max_value=0.4, value=0.10, step=0.01)
 with col_bot2:
     C2 = st.slider(t['labels'][4], min_value=0.0, max_value=0.4, value=0.00, step=0.01)
+with col_bot3:
+    P_temp = [2, 2, 3, 4][shape_idx]
+    x_ratio_temp = L_out / L_total if L_total > 0 else 0
+    d_exp_input = 1 - (x_ratio_temp**P_temp)
+    st.metric("儀器實測值 d_exp (自動計算):", f"{d_exp_input:.4f}")
 
-# --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 (新增功能：自訂組數與 L/Lout 輸入) ---
+# --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 (新增功能) ---
 with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
-    st.markdown("請輸入實驗觀測到的 $L_{out}$ 與 $L$，系統將自動計算 $d_{exp}$ 並擬合出專屬於此待測物的誤差係數：")
+    st.markdown("請設定欲輸入的數據組數，並輸入各組的總長度 $L$、水外長 $L_{out}$ 與標準液比重，系統將自動計算 $d_{exp}$ 並擬合：")
     
-    num_pts = st.number_input("欲輸入的實驗數據組數 (N):", min_value=2, max_value=10, value=3)
+    num_pts = st.number_input("欲輸入的實驗數據組數 (N):", min_value=2, max_value=10, value=3, step=1)
     
-    fit_data_x = []
-    fit_data_y = []
+    X_fit = []
+    Y_fit = []
     
-    P_fit = [2, 2, 3, 4][shape_idx]
-    
-    # 動態產生輸入欄位
-    for i in range(num_pts):
-        st.markdown(f"**數據點 {i+1}**")
-        c1, c2, c3 = st.columns(3)
-        l_total_i = c1.number_input(f"總長度 L_{i+1}", value=40.0, key=f"lt_{i}")
-        l_out_i = c2.number_input(f"水外長 L_out_{i+1}", value=20.0, key=f"lo_{i}")
-        d_std_i = c3.number_input(f"該液體已知比重 d_std_{i+1}", value=1.000, format="%.3f", key=f"ds_{i}")
+    for i in range(int(num_pts)):
+        st.markdown(f"**第 {i+1} 組數據**")
+        col_f1, col_f2, col_f3 = st.columns(3)
+        with col_f1:
+            l_i = st.number_input(f"總長度 L_{i+1}", value=40.0, step=1.0, key=f"L_{i}")
+        with col_f2:
+            lout_i = st.number_input(f"水外長 L_out_{i+1}", value=20.0, step=1.0, key=f"Lout_{i}")
+        with col_f3:
+            # 需輸入標準液的真實比重才能計算殘差誤差
+            d_std_i = st.number_input(f"該標準液體真實比重 d_std_{i+1}", value=1.000, step=0.001, format="%.3f", key=f"dstd_{i}")
         
-        # 計算此點的露出比例與未校正比重
-        xi = l_out_i / l_total_i if l_total_i > 0 else 0
-        di_exp = 1 - (xi**P_fit)
-        st.caption(f"💡 自動計算結果：露出比例 x = {xi:.3f} | 儀器實測值 d_exp = {di_exp:.4f}")
+        x_i = lout_i / l_i if l_i > 0 else 0
+        P_fit = [2, 2, 3, 4][shape_idx]
+        d_exp_i = 1 - (x_i**P_fit)
+        st.caption(f"💡 自動計算結果：露出比例 x = {x_i:.3f} | 儀器實測值 d_exp_{i+1} = {d_exp_i:.4f}")
         
-        # 收集擬合用的數據 (目標是殘差 delta_d = (1-x^P) - d_std)
-        fit_data_x.append(xi)
-        fit_data_y.append(di_exp - d_std_i)
+        X_fit.append([x_i, x_i**2])
+        Y_fit.append(d_exp_i - d_std_i)
     
-    if st.button("執行最小平方法擬合"):
-        X_mat = np.array([[xi, xi**2] for xi in fit_data_x])
-        Y_mat = np.array(fit_data_y)
+    if st.button("執行多項式擬合計算"):
         try:
-            coeffs, _, _, _ = np.linalg.lstsq(X_mat, Y_mat, rcond=None)
-            st.success(f"✅ 擬合成功！建議係數： **線性誤差 C1 = {coeffs[0]:.4f}** , **二次誤差 C2 = {coeffs[1]:.4f}**")
-            st.info("請手動調整上方滑桿至此數值以完成數位雙生校正。")
-        except:
-            st.error("計算失敗，請確認輸入數據是否合理。")
+            c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
+            st.success(f"✅ 擬合成功！建議請將上方滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
+        except Exception as e:
+            st.error("計算失敗，請檢查輸入的數據。")
 
-# --- 4. 物理運算 (完全保留原始邏輯，d_exp 改為自動得出) ---
+# --- 4. 物理運算 (完全保留您的原始邏輯) ---
 P_VALUES = [2, 2, 3, 4]
 P = P_VALUES[shape_idx]
 x_ratio = L_out / L_total if L_total > 0 else 0
-
-# 自動得出 d_exp (未校正前理想值)
-d_exp = 1 - (x_ratio**P)
 
 d_ideal = 1 - (x_ratio**P)
 E_x = (C1 * x_ratio) + (C2 * (x_ratio**2))
@@ -131,7 +131,8 @@ if x_ratio >= 0.999:
 else:
     z_cb_val = L_total * ((P-1)/P) * ((1 - x_ratio**P) / (1 - x_ratio**(P-1)))
 
-# --- 5. 藍色數據儀表板 (保留您的 HTML 設計) ---
+# --- 5. 藍色數據儀表板 (保留您的 HTML 設計，透過 st.markdown 渲染) ---
+# 【修改處】將 CSS Grid 欄位擴增，加入紫色的實測值 (d_exp) 顯示
 st.markdown(f"""
 <div style="background-color: #f1f8ff; padding: 15px; border-radius: 8px; border-left: 10px solid #007bff; margin-bottom: 20px; font-family: sans-serif;">
     <h3 style="margin: 0 0 12px 0; color: #0056b3; font-size: 18px;">{t['report_title']}</h3>
@@ -141,7 +142,7 @@ st.markdown(f"""
         <span style="color: #d9534f;">🔴 <b>{t['vec_Fb']}</b> = {FB_mag:.4f}</span>
         <span style="color: #f0ad4e;">🟡 <b>{t['vec_W']}</b> = {W_fixed:.4f}</span>
         <span style="color: #28a745;">🟢 <b>{t['vec_d']}</b> = {d_true:.4f}</span>
-        <span style="color: #6f42c1;">🟣 <b>實測(d_exp)</b> = {d_exp:.4f}</span>
+        <span style="color: #6f42c1;">🟣 <b>實測值(d_exp)</b> = {d_exp_input:.4f}</span>
     </div>
     <div style="margin-top: 10px; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 5px;">
         微積分幾何中心檢驗：質心 (CG) = {z_cg_val:.2f} | 浮心 (CB) = {z_cb_val:.2f}
@@ -206,7 +207,4 @@ ax2.set_title(t['ax2_title'], fontproperties=tc_font_bold, fontsize=16)
 ax2.legend(); ax2.grid(True, alpha=0.2)
 
 plt.tight_layout()
-st.pyplot(fig)
-
-plt.tight_layout()
-st.pyplot(fig)
+st.pyplot(fig) # 唯一修改：將 plt.show() 改為 st.pyplot(fig)
