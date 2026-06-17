@@ -64,12 +64,12 @@ with col_top2:
 with col_top3:
     L_out = st.number_input(t['labels'][2], value=20.0, step=1.0)
 
-# 【修改處】將此列擴充為 3 欄，d_exp 改為自動計算與顯示
+# 【修改處】將此列擴充為 3 欄，d_exp 改為自動計算與顯示 (C1, C2 改為 number_input)
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    C1 = st.slider(t['labels'][3], min_value=0.0, max_value=0.4, value=0.10, step=0.01)
+    C1 = st.number_input(t['labels'][3], value=0.10, step=0.01)
 with col_bot2:
-    C2 = st.slider(t['labels'][4], min_value=0.0, max_value=0.4, value=0.00, step=0.01)
+    C2 = st.number_input(t['labels'][4], value=0.00, step=0.01)
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
     x_ratio_temp = L_out / L_total if L_total > 0 else 0
