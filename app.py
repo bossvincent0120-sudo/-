@@ -10,7 +10,7 @@ import os
 # --- 0. 網頁配置設定 ---
 st.set_page_config(layout="wide", page_title="懸吊式比重計數位雙生")
 
-# --- 1. 字體與環境初始化 (完全保留您的設定) ---
+# --- 1. 字體與環境初始化 ---
 @st.cache_resource
 def load_fonts():
     font_path = "NotoSansCJKtc-Regular.otf"
@@ -27,7 +27,7 @@ def load_fonts():
 tc_font, tc_font_bold = load_fonts()
 plt.rcParams['axes.unicode_minus'] = False 
 
-# --- 2. 雙語字典庫 (完全保留) ---
+# --- 2. 雙語字典庫 ---
 UI_TEXT = {
     '中文': {
         'shapes': [("圓柱體 (Cylinder, P=2)", 0), ("長方薄板 (Rect Plate, P=2)", 1), 
@@ -71,23 +71,18 @@ with col_bot2:
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
     x_ratio_temp = L_out / L_total if L_total > 0 else 0
-    d_ideal_input = 1 - (x_ratio_temp**P_temp)
-    st.metric("理想理論值 d_ideal:", f"{d_ideal_input:.4f}")
+    d_exp_input = 1 - (x_ratio_temp**P_temp)
+    st.metric("儀器實測值 (d_exp):", f"{d_exp_input:.4f}")
 
-# --- 3.5 虛擬實驗室：標定數據模擬與擬合計算工具 ---
+# --- 3.5 虛擬實驗室：動態物理誤差模擬與標定 ---
 with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
-    st.markdown("本區模擬現實中探頭進入**純水 (d=1.000)** 時的狀況。系統內建「動態材質擾動引擎」，會根據您的輸入自動模擬不同材質（如壓克力、金屬）所造成的表面張力與重心變異。")
+    st.markdown("本區模擬現實探頭的測試狀況。系統會根據幾何形狀的特性，自動模擬出對應的真實液體比重 ($d_{std}$)，供最小平方法進行動態擬合：")
     
     num_pts = st.number_input("欲模擬的採樣點數量 (N):", min_value=2, max_value=10, value=3, step=1)
     
-    # 【核心修改】材質動態擾動引擎
-    # 將上方主介面的 L_total 與 L_out 作為「材質切換」的種子
-    # 只要稍微調整主介面的長度，系統就會模擬您換了一支「親水性或疏水性不同」的探頭
-    np.random.seed(int(L_total * 100 + L_out * 10 + shape_idx))
-    material_multiplier = np.random.uniform(0.3, 2.0) 
-    
-    base_c1 = [0.035, 0.045, 0.082, 0.125][shape_idx] * material_multiplier
-    base_c2 = [0.012, 0.018, 0.045, 0.075][shape_idx] * material_multiplier
+    # 【核心修改】依照形狀賦予不同的隱藏物理特徵 (圓錐誤差大、圓柱誤差小)
+    true_c1 = [0.035, 0.048, 0.075, 0.110][shape_idx]
+    true_c2 = [0.012, 0.020, 0.040, 0.065][shape_idx]
     
     X_fit = []
     Y_fit = []
@@ -103,18 +98,19 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
         
         x_i = lout_i / l_i if l_i > 0 else 0
         P_fit = [2, 2, 3, 4][shape_idx]
-        d_ideal_sim = 1 - (x_i**P_fit)
+        d_exp_i = 1 - (x_i**P_fit) # 這是儀器因為瑕疵而算出的視比重
         
-        # 加入極微小的環境雜訊，模擬真實水波擾動
-        noise = np.random.uniform(-0.003, 0.003)
-        d_exp_sim = d_ideal_sim - (base_c1 * x_i) - (base_c2 * (x_i**2)) + noise
+        # 加入極微小的動態水波雜訊，讓每次改變 L_out 都能產生真實的波動感
+        np.random.seed(int(x_i * 1000 + shape_idx))
+        noise = np.random.uniform(-0.002, 0.002)
         
-        d_std_fixed = 1.000
+        # 反推該液體的「真實標準比重 (d_std)」
+        d_std_i = d_exp_i - (true_c1 * x_i) - (true_c2 * (x_i**2)) + noise
         
-        st.caption(f"💡 露出比例 x = {x_i:.3f} | 虛擬感測器讀值 d_exp = {d_exp_sim:.4f}")
+        st.caption(f"💡 露出比例 x = {x_i:.3f} | 儀器視比重 d_exp = {d_exp_i:.4f} | 對應標準液 d_std = {d_std_i:.4f}")
         
         X_fit.append([x_i, x_i**2])
-        Y_fit.append(d_exp_sim - d_std_fixed)
+        Y_fit.append(d_exp_i - d_std_i) # 殘差 = 觀測值 - 真實值
     
     if st.button("執行最小平方法擬合"):
         try:
@@ -122,11 +118,11 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
                 st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0。")
             else:
                 c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
-                st.success(f"✅ 擬合成功！演算法成功捕捉該材質與幾何之特徵。\n請將主介面滑桿設定為： **線性誤差 C1 = {-c[0]:.4f}** , **二次誤差 C2 = {-c[1]:.4f}**")
+                st.success(f"✅ 擬合成功！演算法成功捕捉該幾何之物理特徵。\n請將主介面滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
         except Exception as e:
             st.error("計算失敗。")
 
-# --- 4. 物理運算 (一字未動) ---
+# --- 4. 物理運算 ---
 P_VALUES = [2, 2, 3, 4]
 P = P_VALUES[shape_idx]
 x_ratio = L_out / L_total if L_total > 0 else 0
@@ -146,7 +142,7 @@ if x_ratio >= 0.999:
 else:
     z_cb_val = L_total * ((P-1)/P) * ((1 - x_ratio**P) / (1 - x_ratio**(P-1)))
 
-# --- 5. 藍色數據儀表板 (一字未動) ---
+# --- 5. 藍色數據儀表板 ---
 st.markdown(f"""
 <div style="background-color: #f1f8ff; padding: 15px; border-radius: 8px; border-left: 10px solid #007bff; margin-bottom: 20px; font-family: sans-serif;">
     <h3 style="margin: 0 0 12px 0; color: #0056b3; font-size: 18px;">{t['report_title']}</h3>
@@ -156,7 +152,7 @@ st.markdown(f"""
         <span style="color: #d9534f;">🔴 <b>{t['vec_Fb']}</b> = {FB_mag:.4f}</span>
         <span style="color: #f0ad4e;">🟡 <b>{t['vec_W']}</b> = {W_fixed:.4f}</span>
         <span style="color: #28a745;">🟢 <b>{t['vec_d']}</b> = {d_true:.4f}</span>
-        <span style="color: #6f42c1;">🟣 <b>理想值(d_ideal)</b> = {d_ideal:.4f}</span>
+        <span style="color: #6f42c1;">🟣 <b>實測值(d_exp)</b> = {d_exp_input:.4f}</span>
     </div>
     <div style="margin-top: 10px; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 5px;">
         微積分幾何中心檢驗：質心 (CG) = {z_cg_val:.2f} | 浮心 (CB) = {z_cb_val:.2f}
@@ -164,7 +160,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 6. 繪圖區 (一字未動) ---
+# --- 6. 繪圖區 (完美修復紅點座標) ---
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7.5), gridspec_kw={'width_ratios': [1, 1.1]})
 pe = [path_effects.withStroke(linewidth=3, foreground="white")]
 
@@ -212,10 +208,17 @@ ax1.set_xlim(-scale*0.8, scale*0.8); ax1.set_ylim(-scale*1.3, scale*1.0); ax1.ax
 ax1.set_title(t['ax1_title'], fontproperties=tc_font_bold, fontsize=16)
 
 x_m = np.linspace(0, 1, 100)
-y_i, y_c = 1-(x_m**P), 1-(x_m**P)-(C1*x_m + C2*x_m**2)
+y_i = 1 - (x_m**P)
+# 【核心修改】加入 np.maximum(0.0, ...) 強制與 d_true 邏輯一致，確保曲線與點完美接合
+y_c = np.maximum(0.0, y_i - (C1*x_m + C2*x_m**2)) 
+
 ax2.plot(x_m, y_i, color='#ced4da', linestyle='--', label="Theory Ideal")
 ax2.plot(x_m, y_c, color='#28a745', lw=3, label="Calibrated Model")
-ax2.scatter(x_ratio, d_true, color='red', s=150, zorder=10)
+
+# 【核心修改】新增紫色點顯示「原始未校正誤差」，並確保紅色點絕對釘在綠線上
+ax2.scatter(x_ratio, d_ideal, color='#6f42c1', s=100, zorder=9, alpha=0.6, label="Raw (d_exp)")
+ax2.scatter(x_ratio, d_true, color='red', s=150, zorder=10, label="True (d_true)")
+
 ax2.set_xlabel("露出比例 x", fontproperties=tc_font); ax2.set_ylabel("比重 d", fontproperties=tc_font)
 ax2.set_title(t['ax2_title'], fontproperties=tc_font_bold, fontsize=16)
 ax2.legend(); ax2.grid(True, alpha=0.2)
