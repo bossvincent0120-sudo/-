@@ -76,11 +76,11 @@ with col_bot3:
 
 # --- 3.5 虛擬實驗室：動態物理誤差模擬與標定 ---
 with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
-    st.markdown("本區模擬現實探頭的測試狀況。系統會根據幾何形狀的特性，自動模擬出對應的真實液體比重 ($d_{std}$)，供最小平方法進行動態擬合：")
+    # 【文字修正】將液體修正為固體，契合懸吊式比重計測量目標
+    st.markdown("本區模擬現實探頭的測試狀況。系統會根據幾何形狀的特性，自動模擬出對應的**真實固體比重 ($d_{std}$)**，供最小平方法進行動態擬合：")
     
     num_pts = st.number_input("欲模擬的採樣點數量 (N):", min_value=2, max_value=10, value=3, step=1)
     
-    # 【核心修改】依照形狀賦予不同的隱藏物理特徵 (圓錐誤差大、圓柱誤差小)
     true_c1 = [0.035, 0.048, 0.075, 0.110][shape_idx]
     true_c2 = [0.012, 0.020, 0.040, 0.065][shape_idx]
     
@@ -98,19 +98,19 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
         
         x_i = lout_i / l_i if l_i > 0 else 0
         P_fit = [2, 2, 3, 4][shape_idx]
-        d_exp_i = 1 - (x_i**P_fit) # 這是儀器因為瑕疵而算出的視比重
+        d_exp_i = 1 - (x_i**P_fit) 
         
-        # 加入極微小的動態水波雜訊，讓每次改變 L_out 都能產生真實的波動感
         np.random.seed(int(x_i * 1000 + shape_idx))
         noise = np.random.uniform(-0.002, 0.002)
         
-        # 反推該液體的「真實標準比重 (d_std)」
+        # 【文字修正】反推該固體的「真實標準比重 (d_std)」
         d_std_i = d_exp_i - (true_c1 * x_i) - (true_c2 * (x_i**2)) + noise
         
-        st.caption(f"💡 露出比例 x = {x_i:.3f} | 儀器視比重 d_exp = {d_exp_i:.4f} | 對應標準液 d_std = {d_std_i:.4f}")
+        # 【文字修正】顯示真實固體比重
+        st.caption(f"💡 露出比例 x = {x_i:.3f} | 儀器視比重 d_exp = {d_exp_i:.4f} | 真實固體比重 d_std = {d_std_i:.4f}")
         
         X_fit.append([x_i, x_i**2])
-        Y_fit.append(d_exp_i - d_std_i) # 殘差 = 觀測值 - 真實值
+        Y_fit.append(d_exp_i - d_std_i) 
     
     if st.button("執行最小平方法擬合"):
         try:
@@ -160,7 +160,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 6. 繪圖區 (完美修復紅點座標) ---
+# --- 6. 繪圖區 ---
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7.5), gridspec_kw={'width_ratios': [1, 1.1]})
 pe = [path_effects.withStroke(linewidth=3, foreground="white")]
 
@@ -209,13 +209,11 @@ ax1.set_title(t['ax1_title'], fontproperties=tc_font_bold, fontsize=16)
 
 x_m = np.linspace(0, 1, 100)
 y_i = 1 - (x_m**P)
-# 【核心修改】加入 np.maximum(0.0, ...) 強制與 d_true 邏輯一致，確保曲線與點完美接合
 y_c = np.maximum(0.0, y_i - (C1*x_m + C2*x_m**2)) 
 
 ax2.plot(x_m, y_i, color='#ced4da', linestyle='--', label="Theory Ideal")
 ax2.plot(x_m, y_c, color='#28a745', lw=3, label="Calibrated Model")
 
-# 【核心修改】新增紫色點顯示「原始未校正誤差」，並確保紅色點絕對釘在綠線上
 ax2.scatter(x_ratio, d_ideal, color='#6f42c1', s=100, zorder=9, alpha=0.6, label="Raw (d_exp)")
 ax2.scatter(x_ratio, d_true, color='red', s=150, zorder=10, label="True (d_true)")
 
