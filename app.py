@@ -10,7 +10,7 @@ import os
 # --- 0. 網頁配置設定 ---
 st.set_page_config(layout="wide", page_title="懸吊式比重計數位雙生")
 
-# --- 1. 字體與環境初始化 (完全保留您的設定) ---
+# --- 1. 字體與環境初始化 ---
 @st.cache_resource
 def load_fonts():
     font_path = "NotoSansCJKtc-Regular.otf"
@@ -27,7 +27,7 @@ def load_fonts():
 tc_font, tc_font_bold = load_fonts()
 plt.rcParams['axes.unicode_minus'] = False 
 
-# --- 2. 雙語字典庫 (完全保留) ---
+# --- 2. 雙語字典庫 ---
 UI_TEXT = {
     '中文': {
         'shapes': [("圓柱體 (Cylinder, P=2)", 0), ("長方薄板 (Rect Plate, P=2)", 1), 
@@ -49,11 +49,10 @@ UI_TEXT = {
     }
 }
 
-# --- 3. Streamlit UI 控制項 (取代 ipywidgets) ---
+# --- 3. Streamlit UI 控制項 ---
 lang = st.radio("🌐 Language:", ['中文', 'English'], horizontal=True)
 t = UI_TEXT[lang]
 
-# 佈局排版對齊您原本的 HBox
 col_top1, col_top2, col_top3 = st.columns(3)
 with col_top1:
     shape_options = [s[0] for s in t['shapes']]
@@ -64,29 +63,36 @@ with col_top2:
 with col_top3:
     L_out = st.number_input(t['labels'][2], value=20.0, step=1.0)
 
-# 將此列擴充為 3 欄，d_exp 改為自動計算與顯示 (C1, C2 改為 number_input)
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    C1 = st.number_input(t['labels'][3], value=0.10, step=0.01)
+    C1 = st.number_input(t['labels'][3], value=0.00, step=0.01)
 with col_bot2:
     C2 = st.number_input(t['labels'][4], value=0.00, step=0.01)
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
     x_ratio_temp = L_out / L_total if L_total > 0 else 0
-    d_exp_input = 1 - (x_ratio_temp**P_temp)
-    st.metric("儀器實測值 d_exp (自動計算):", f"{d_exp_input:.4f}")
+    d_ideal_input = 1 - (x_ratio_temp**P_temp)
+    st.metric("理想理論值 d_ideal:", f"{d_ideal_input:.4f}")
 
-# --- 3.5 實驗數據標定與 C1, C2 擬合計算工具 ---
-with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
-    st.markdown("請設定欲輸入的數據組數，並輸入各組的總長度 $L$、水外長 $L_{out}$，系統將自動計算並擬合：")
+# --- 3.5 虛擬實驗室：標定數據模擬與擬合計算工具 ---
+with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
+    st.markdown("本區模擬現實中探頭進入**純水 (d=1.000)** 時的狀況。系統會根據您選擇的幾何形狀，自動加入模擬的「表面張力」與「力矩偏移」噪音，產生虛擬儀器讀值。")
     
-    num_pts = st.number_input("欲輸入的實驗數據組數 (N):", min_value=2, max_value=10, value=3, step=1)
+    num_pts = st.number_input("欲模擬的採樣點數量 (N):", min_value=2, max_value=10, value=3, step=1)
+    
+    # 【核心修改】為每種形狀設定不同的「隱藏真實物理誤差」
+    # 圓錐的截面積變化大，因此預設誤差最大；圓柱最穩定，誤差最小。
+    hidden_c1_list = [0.035, 0.045, 0.082, 0.125]
+    hidden_c2_list = [0.012, 0.018, 0.045, 0.075]
+    
+    true_c1 = hidden_c1_list[shape_idx]
+    true_c2 = hidden_c2_list[shape_idx]
     
     X_fit = []
     Y_fit = []
     
     for i in range(int(num_pts)):
-        st.markdown(f"**第 {i+1} 組數據**")
+        st.markdown(f"**第 {i+1} 組模擬數據**")
         col_f1, col_f2 = st.columns(2)
         with col_f1:
             l_i = st.number_input(f"總長度 L_{i+1}", value=40.0, step=1.0, key=f"L_{i}")
@@ -94,30 +100,33 @@ with st.expander("🔬 實驗數據標定與 C1, C2 擬合計算工具"):
             default_lout = max(0.0, 20.0 - i * 5.0)
             lout_i = st.number_input(f"水外長 L_out_{i+1}", value=default_lout, step=1.0, key=f"Lout_{i}")
         
+        # 系統底層運算：模擬真實世界的儀器讀值 (理想值 - 隱藏的物理干擾)
         x_i = lout_i / l_i if l_i > 0 else 0
         P_fit = [2, 2, 3, 4][shape_idx]
-        d_exp_i = 1 - (x_i**P_fit)
+        d_ideal_sim = 1 - (x_i**P_fit)
         
-        # 【核心修改處】自動產生一個合理的「真實標準值」，模擬現實中的微小物理誤差
-        # 讓系統自動算出 C1=0.05 (表面張力) 與 C2=0.02 (力矩偏移)，確保計算結果隨時可用且美觀
-        d_std_i = d_exp_i + (0.05 * x_i) + (0.02 * (x_i**2))
+        # 產生帶有特定幾何干擾的虛擬讀值
+        d_exp_sim = d_ideal_sim - (true_c1 * x_i) - (true_c2 * (x_i**2))
         
-        st.caption(f"💡 自動計算結果：露出比例 x = {x_i:.3f} | 儀器實測值 d_exp_{i+1} = {d_exp_i:.4f}")
+        # 標定基準為純水
+        d_std_fixed = 1.000
+        
+        st.caption(f"💡 露出比例 x = {x_i:.3f} | 虛擬感測器讀值 d_exp = {d_exp_sim:.4f}")
         
         X_fit.append([x_i, x_i**2])
-        Y_fit.append(d_exp_i - d_std_i)
+        Y_fit.append(d_exp_sim - d_std_fixed)
     
-    if st.button("執行多項式擬合計算"):
+    if st.button("執行最小平方法擬合"):
         try:
             if all(x == 0 for x, _ in X_fit):
-                st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0 且具有差異性。")
+                st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0。")
             else:
                 c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
-                st.success(f"✅ 擬合成功！建議請將上方滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
+                st.success(f"✅ 擬合成功！演算法成功捕捉該幾何之物理特徵。\n請將主介面滑桿設定為： **線性誤差 C1 = {-c[0]:.4f}** , **二次誤差 C2 = {-c[1]:.4f}**")
         except Exception as e:
-            st.error("計算失敗，請檢查輸入的數據。")
+            st.error("計算失敗。")
 
-# --- 4. 物理運算 (完全保留您的原始邏輯) ---
+# --- 4. 物理運算 ---
 P_VALUES = [2, 2, 3, 4]
 P = P_VALUES[shape_idx]
 x_ratio = L_out / L_total if L_total > 0 else 0
@@ -137,7 +146,7 @@ if x_ratio >= 0.999:
 else:
     z_cb_val = L_total * ((P-1)/P) * ((1 - x_ratio**P) / (1 - x_ratio**(P-1)))
 
-# --- 5. 藍色數據儀表板 (保留您的 HTML 設計，透過 st.markdown 渲染) ---
+# --- 5. 藍色數據儀表板 ---
 st.markdown(f"""
 <div style="background-color: #f1f8ff; padding: 15px; border-radius: 8px; border-left: 10px solid #007bff; margin-bottom: 20px; font-family: sans-serif;">
     <h3 style="margin: 0 0 12px 0; color: #0056b3; font-size: 18px;">{t['report_title']}</h3>
@@ -147,7 +156,7 @@ st.markdown(f"""
         <span style="color: #d9534f;">🔴 <b>{t['vec_Fb']}</b> = {FB_mag:.4f}</span>
         <span style="color: #f0ad4e;">🟡 <b>{t['vec_W']}</b> = {W_fixed:.4f}</span>
         <span style="color: #28a745;">🟢 <b>{t['vec_d']}</b> = {d_true:.4f}</span>
-        <span style="color: #6f42c1;">🟣 <b>實測值(d_exp)</b> = {d_exp_input:.4f}</span>
+        <span style="color: #6f42c1;">🟣 <b>理想值(d_ideal)</b> = {d_ideal:.4f}</span>
     </div>
     <div style="margin-top: 10px; font-size: 12px; color: #555; border-top: 1px solid #ddd; padding-top: 5px;">
         微積分幾何中心檢驗：質心 (CG) = {z_cg_val:.2f} | 浮心 (CB) = {z_cb_val:.2f}
@@ -155,7 +164,7 @@ st.markdown(f"""
 </div>
 """, unsafe_allow_html=True)
 
-# --- 6. 繪圖區 (一字不漏複製您的 Matplotlib 程式碼) ---
+# --- 6. 繪圖區 ---
 fig, (ax1, ax2) = plt.subplots(1, 2, figsize=(15, 7.5), gridspec_kw={'width_ratios': [1, 1.1]})
 pe = [path_effects.withStroke(linewidth=3, foreground="white")]
 
