@@ -73,14 +73,14 @@ with col_top3:
 
 if L_out > L_total:
     st.error("⚠️ 物理邏輯錯誤：水外長度 (L_out) 不可大於物體總長度 (L)！請修正數值。")
-    st.stop()
+    st.stop() 
 
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    # 【修正點】改變 step 與 format，防止自動進位，精確顯示到小數點後四位
+    # 保留精確度設定，防止自動四捨五入
     C1 = st.number_input(t['labels'][3], step=0.0001, format="%.4f", key='c1_val')
 with col_bot2:
-    # 【修正點】改變 step 與 format，防止自動進位，精確顯示到小數點後四位
+    # 保留精確度設定，防止自動四捨五入
     C2 = st.number_input(t['labels'][4], step=0.0001, format="%.4f", key='c2_val')
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
@@ -127,7 +127,9 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算", exp
         X_fit.append([x_i, x_i**2])
         Y_fit.append(d_exp_i - d_std_i) 
     
+    # 【核心修復】將 st.rerun() 移出 try...except 區塊，避免錯誤攔截
     if st.button("執行擬合並自動套用模型", type="primary"):
+        fit_success = False
         try:
             if all(x == 0 for x, _ in X_fit):
                 st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0。")
@@ -136,9 +138,12 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算", exp
                 st.session_state.c1_val = float(c[0])
                 st.session_state.c2_val = float(c[1])
                 st.session_state.fit_msg = f"✅ 擬合成功！已自動將上方滑桿更新為： 線性誤差 C1 = {c[0]:.4f} , 二次誤差 C2 = {c[1]:.4f}"
-                st.rerun()
+                fit_success = True
         except Exception as e:
-            st.error("計算失敗。")
+            st.error(f"計算失敗：{str(e)}")
+            
+        if fit_success:
+            st.rerun()
 
     if st.session_state.fit_msg:
         st.success(st.session_state.fit_msg)
@@ -236,7 +241,7 @@ y_c = np.maximum(0.0, y_i - (C1*x_m + C2*x_m**2))
 ax2.plot(x_m, y_i, color='#ced4da', linestyle='--', label="Theory Ideal")
 ax2.plot(x_m, y_c, color='#28a745', lw=3, label="Calibrated Model")
 
-ax2.scatter(x_ratio, d_ideal, color='#6f42c1', s=100, zorder=9, alpha=0.6, label="Raw (d_exp)")
+ax2.scatter(x_ratio, d_exp_input, color='#6f42c1', s=100, zorder=9, alpha=0.6, label="Raw (d_exp)")
 ax2.scatter(x_ratio, d_true, color='red', s=150, zorder=10, label="True (d_true)")
 
 ax2.set_xlabel("露出比例 x", fontproperties=tc_font); ax2.set_ylabel("比重 d", fontproperties=tc_font)
