@@ -71,16 +71,17 @@ with col_top2:
 with col_top3:
     L_out = st.number_input(t['labels'][2], value=20.0, min_value=0.0, step=1.0)
 
+# 主介面邊界邏輯檢查
 if L_out > L_total:
     st.error("⚠️ 物理邏輯錯誤：水外長度 (L_out) 不可大於物體總長度 (L)！請修正數值。")
-    st.stop() 
+    st.stop()
 
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    # 保留精確度設定，防止自動四捨五入
+    # 綁定 Session State，設定精確度防止四捨五入
     C1 = st.number_input(t['labels'][3], step=0.0001, format="%.4f", key='c1_val')
 with col_bot2:
-    # 保留精確度設定，防止自動四捨五入
+    # 綁定 Session State，設定精確度防止四捨五入
     C2 = st.number_input(t['labels'][4], step=0.0001, format="%.4f", key='c2_val')
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
@@ -127,7 +128,7 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算", exp
         X_fit.append([x_i, x_i**2])
         Y_fit.append(d_exp_i - d_std_i) 
     
-    # 【核心修復】將 st.rerun() 移出 try...except 區塊，避免錯誤攔截
+    # 【核心修復】一鍵自動代入按鈕邏輯，將 rerun 移出 try 區塊
     if st.button("執行擬合並自動套用模型", type="primary"):
         fit_success = False
         try:
