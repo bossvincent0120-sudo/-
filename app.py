@@ -51,9 +51,9 @@ UI_TEXT = {
 
 # --- 2.5 Session State 變數初始化 ---
 if 'c1_val' not in st.session_state:
-    st.session_state.c1_val = 0.00
+    st.session_state.c1_val = 0.0000
 if 'c2_val' not in st.session_state:
-    st.session_state.c2_val = 0.00
+    st.session_state.c2_val = 0.0000
 if 'fit_msg' not in st.session_state:
     st.session_state.fit_msg = ""
 
@@ -77,11 +77,11 @@ if L_out > L_total:
 
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    # 【修復點 1】將 C1 綁定 Session State
-    C1 = st.number_input(t['labels'][3], value=float(st.session_state.c1_val), step=0.01)
+    # 【修正點】改變 step 與 format，防止自動進位，精確顯示到小數點後四位
+    C1 = st.number_input(t['labels'][3], step=0.0001, format="%.4f", key='c1_val')
 with col_bot2:
-    # 【修復點 1】將 C2 綁定 Session State
-    C2 = st.number_input(t['labels'][4], value=float(st.session_state.c2_val), step=0.01)
+    # 【修正點】改變 step 與 format，防止自動進位，精確顯示到小數點後四位
+    C2 = st.number_input(t['labels'][4], step=0.0001, format="%.4f", key='c2_val')
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
     x_ratio_temp = L_out / L_total if L_total > 0 else 0
@@ -127,21 +127,18 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算", exp
         X_fit.append([x_i, x_i**2])
         Y_fit.append(d_exp_i - d_std_i) 
     
-    if st.button("執行最小平方法擬合"):
+    if st.button("執行擬合並自動套用模型", type="primary"):
         try:
             if all(x == 0 for x, _ in X_fit):
                 st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0。")
             else:
                 c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
-                
-                # 【修復點 2】將算出的數值寫入 Session State 並強制刷新畫面
                 st.session_state.c1_val = float(c[0])
                 st.session_state.c2_val = float(c[1])
                 st.session_state.fit_msg = f"✅ 擬合成功！已自動將上方滑桿更新為： 線性誤差 C1 = {c[0]:.4f} , 二次誤差 C2 = {c[1]:.4f}"
                 st.rerun()
-                
         except Exception as e:
-            st.error(f"計算失敗: {str(e)}")
+            st.error("計算失敗。")
 
     if st.session_state.fit_msg:
         st.success(st.session_state.fit_msg)
