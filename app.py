@@ -49,6 +49,14 @@ UI_TEXT = {
     }
 }
 
+# --- 2.5 Session State 變數初始化 ---
+if 'c1_val' not in st.session_state:
+    st.session_state.c1_val = 0.00
+if 'c2_val' not in st.session_state:
+    st.session_state.c2_val = 0.00
+if 'fit_msg' not in st.session_state:
+    st.session_state.fit_msg = ""
+
 # --- 3. Streamlit UI 控制項 ---
 lang = st.radio("🌐 Language:", ['中文', 'English'], horizontal=True)
 t = UI_TEXT[lang]
@@ -59,24 +67,29 @@ with col_top1:
     selected_shape = st.selectbox(t['labels'][0], shape_options)
     shape_idx = shape_options.index(selected_shape)
 with col_top2:
-    L_total = st.number_input(t['labels'][1], value=40.0, step=1.0)
+    L_total = st.number_input(t['labels'][1], value=40.0, min_value=0.1, step=1.0)
 with col_top3:
-    L_out = st.number_input(t['labels'][2], value=20.0, step=1.0)
+    L_out = st.number_input(t['labels'][2], value=20.0, min_value=0.0, step=1.0)
+
+if L_out > L_total:
+    st.error("⚠️ 物理邏輯錯誤：水外長度 (L_out) 不可大於物體總長度 (L)！請修正數值。")
+    st.stop()
 
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    C1 = st.number_input(t['labels'][3], value=0.00, step=0.01)
+    # 【修復點 1】將 C1 綁定 Session State
+    C1 = st.number_input(t['labels'][3], value=float(st.session_state.c1_val), step=0.01)
 with col_bot2:
-    C2 = st.number_input(t['labels'][4], value=0.00, step=0.01)
+    # 【修復點 1】將 C2 綁定 Session State
+    C2 = st.number_input(t['labels'][4], value=float(st.session_state.c2_val), step=0.01)
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
     x_ratio_temp = L_out / L_total if L_total > 0 else 0
     d_exp_input = 1 - (x_ratio_temp**P_temp)
     st.metric("儀器實測值 (d_exp):", f"{d_exp_input:.4f}")
 
-# --- 3.5 虛擬實驗室：動態物理誤差模擬與標定 ---
-with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
-    # 【文字修正】將液體修正為固體，契合懸吊式比重計測量目標
+# --- 3.5 虛擬實驗室：物理誤差模擬與標定演算 ---
+with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算", expanded=True):
     st.markdown("本區模擬現實探頭的測試狀況。系統會根據幾何形狀的特性，自動模擬出對應的**真實固體比重 ($d_{std}$)**，供最小平方法進行動態擬合：")
     
     num_pts = st.number_input("欲模擬的採樣點數量 (N):", min_value=2, max_value=10, value=3, step=1)
@@ -91,11 +104,15 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
         st.markdown(f"**第 {i+1} 組模擬數據**")
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            l_i = st.number_input(f"總長度 L_{i+1}", value=40.0, step=1.0, key=f"L_{i}")
+            l_i = st.number_input(f"總長度 L_{i+1}", value=40.0, min_value=0.1, step=1.0, key=f"L_{i}")
         with col_f2:
-            default_lout = max(0.0, 20.0 - i * 5.0)
-            lout_i = st.number_input(f"水外長 L_out_{i+1}", value=default_lout, step=1.0, key=f"Lout_{i}")
+            default_lout = max(0.0, min(float(l_i), 20.0 - i * 5.0))
+            lout_i = st.number_input(f"水外長 L_out_{i+1}", value=default_lout, min_value=0.0, step=1.0, key=f"Lout_{i}")
         
+        if lout_i > l_i:
+            st.error(f"⚠️ 第 {i+1} 組數據錯誤：水外長度 ({lout_i}) 不可大於總長度 ({l_i})！")
+            st.stop()
+            
         x_i = lout_i / l_i if l_i > 0 else 0
         P_fit = [2, 2, 3, 4][shape_idx]
         d_exp_i = 1 - (x_i**P_fit) 
@@ -103,10 +120,8 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
         np.random.seed(int(x_i * 1000 + shape_idx))
         noise = np.random.uniform(-0.002, 0.002)
         
-        # 【文字修正】反推該固體的「真實標準比重 (d_std)」
         d_std_i = d_exp_i - (true_c1 * x_i) - (true_c2 * (x_i**2)) + noise
         
-        # 【文字修正】顯示真實固體比重
         st.caption(f"💡 露出比例 x = {x_i:.3f} | 儀器視比重 d_exp = {d_exp_i:.4f} | 真實固體比重 d_std = {d_std_i:.4f}")
         
         X_fit.append([x_i, x_i**2])
@@ -118,9 +133,19 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算"):
                 st.warning("⚠️ 數據點無法建立曲線，請確保 L_out 不全為 0。")
             else:
                 c, _, _, _ = np.linalg.lstsq(np.array(X_fit), np.array(Y_fit), rcond=None)
-                st.success(f"✅ 擬合成功！演算法成功捕捉該幾何之物理特徵。\n請將主介面滑桿設定為： **線性誤差 C1 = {c[0]:.4f}** , **二次誤差 C2 = {c[1]:.4f}**")
+                
+                # 【修復點 2】將算出的數值寫入 Session State 並強制刷新畫面
+                st.session_state.c1_val = float(c[0])
+                st.session_state.c2_val = float(c[1])
+                st.session_state.fit_msg = f"✅ 擬合成功！已自動將上方滑桿更新為： 線性誤差 C1 = {c[0]:.4f} , 二次誤差 C2 = {c[1]:.4f}"
+                st.rerun()
+                
         except Exception as e:
-            st.error("計算失敗。")
+            st.error(f"計算失敗: {str(e)}")
+
+    if st.session_state.fit_msg:
+        st.success(st.session_state.fit_msg)
+        st.session_state.fit_msg = ""
 
 # --- 4. 物理運算 ---
 P_VALUES = [2, 2, 3, 4]
