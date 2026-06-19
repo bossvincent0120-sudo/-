@@ -77,9 +77,11 @@ if L_out > L_total:
 
 col_bot1, col_bot2, col_bot3 = st.columns(3)
 with col_bot1:
-    C1 = st.number_input(t['labels'][3], step=0.0001, format="%.4f", key='c1_val')
+    # 【關鍵修復】移除 key 綁定，改用 value 來接收 Session State 的數值
+    C1 = st.number_input(t['labels'][3], value=float(st.session_state.c1_val), step=0.0001, format="%.4f")
 with col_bot2:
-    C2 = st.number_input(t['labels'][4], step=0.0001, format="%.4f", key='c2_val')
+    # 【關鍵修復】移除 key 綁定，改用 value 來接收 Session State 的數值
+    C2 = st.number_input(t['labels'][4], value=float(st.session_state.c2_val), step=0.0001, format="%.4f")
 with col_bot3:
     P_temp = [2, 2, 3, 4][shape_idx]
     x_ratio_temp = L_out / L_total if L_total > 0 else 0
@@ -137,11 +139,9 @@ with st.expander("🔬 虛擬實驗室：物理誤差模擬與標定演算", exp
                 st.session_state.fit_msg = f"✅ 擬合成功！已自動將上方滑桿更新為： 線性誤差 C1 = {c[0]:.4f} , 二次誤差 C2 = {c[1]:.4f}"
                 fit_success = True
         except Exception as e:
-            # 這裡能攔截到真正的錯誤並印出來
             st.error(f"計算失敗，詳細原因：{str(e)}")
             
         if fit_success:
-            # 兼容所有版本的自動重整指令
             if hasattr(st, 'rerun'):
                 st.rerun()
             else:
